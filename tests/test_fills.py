@@ -202,3 +202,14 @@ def test_bad_side_raises():
 def test_missing_columns_raise():
     with pytest.raises(ValueError, match="close"):
         Backtest(pd.DataFrame({"timestamp": [], "open": [], "high": [], "low": []}))
+
+
+def test_readme_examples():
+    # The worked examples in the README, so they can't drift from the code.
+    gap_bar = dict(o=96.50, h=103.40, l=96.10, stop=98.0, target=103.0)
+    assert resolve_bar(LONG, fills=NAIVE, **gap_bar).price == 103.0
+    assert resolve_bar(LONG, fills=HONEST, **gap_bar).price == 96.5
+
+    both_inside = dict(gap_bar, o=100.20)
+    assert resolve_bar(LONG, fills=NAIVE, **both_inside).price == 103.0
+    assert resolve_bar(LONG, fills=HONEST, **both_inside).price == 98.0

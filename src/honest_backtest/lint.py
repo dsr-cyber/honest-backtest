@@ -335,7 +335,7 @@ def main(paths: list[str], out=None) -> int:
     for path in iter_python_files(paths):
         try:
             source = path.read_text(encoding="utf-8")
-            findings = lint_source(source, str(path))
+            findings = lint_source(source, path.as_posix())
         except (OSError, SyntaxError, UnicodeDecodeError) as exc:
             print(f"{path}: could not lint: {exc}", file=sys.stderr)
             status = 2
