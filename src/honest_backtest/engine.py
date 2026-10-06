@@ -87,36 +87,44 @@ def resolve_bar(
     target: float | None,
     fills: FillModel,
     fine: np.ndarray | None = None,
+    stop_at_open: float | None = None,
 ) -> Exit | None:
     """Decide whether this bar exits the trade, and at what price.
 
     `fine` is an optional (n, 3) array of open/high/low for finer bars inside
     this bar. It is only used to break a stop/target collision.
+    `stop_at_open` is the stop that was resting when the bar opened, if an
+    intrabar trail has since moved it. Only that one can be gapped through.
     """
     if side == SHORT:
         # A short is a long on the negated price series, with high and low swapped.
         neg_fine = None if fine is None else -fine[:, [0, 2, 1]]
-        ex = resolve_bar(
-            LONG, -o, -l, -h, -stop, None if target is None else -target, fills, neg_fine
-        )
+        ex = resolve_bar(LONG, -o, -l, -h, -stop, _neg(target), fills, neg_fine, _neg(stop_at_open))
         return None if ex is None else ex._replace(price=-ex.price)
+
+    if stop_at_open is None:
+        stop_at_open = stop
 
     stop_hit = l <= stop
     target_hit = target is not None and h >= target
     if not (stop_hit or target_hit):
         return None
 
+    # Flags are set in both modes, so a naive run can report how many of its
+    # stop fills were at prices that never traded.
     def stop_exit(collision: bool = False) -> Exit:
-        if fills.honest_stops and o < stop:
-            return Exit("stop", o, gap_through=True, collision=collision)
-        return Exit("stop", stop, collision=collision)
+        gapped = o < stop_at_open
+        price = o if gapped and fills.honest_stops else stop
+        return Exit("stop", price, gap_through=gapped, collision=collision)
 
     if not fills.stop_first:
-        return Exit("target", target) if target_hit else stop_exit()
+        if target_hit:
+            return Exit("target", target, collision=stop_hit)
+        return stop_exit()
 
     # The open is the first traded price of the bar, so it settles the order
     # when it is already beyond either level.
-    if o <= stop:
+    if o <= stop_at_open:
         return stop_exit()
     if target_hit and o >= target:
         return Exit("target", target)
@@ -125,6 +133,10 @@ def resolve_bar(
             return _resolve_with_fine(stop, target, fine, fills)
         return stop_exit(collision=True)
     return stop_exit() if stop_hit else Exit("target", target)
+
+
+def _neg(x: float | None) -> float | None:
+    return None if x is None else -x
 
 
 def _resolve_with_fine(stop: float, target: float, fine: np.ndarray, fills: FillModel) -> Exit:
@@ -216,10 +228,13 @@ class Backtest:
         ex: Exit | None = None
         j = e.bar
         for j in range(e.bar, last + 1):
+            resting = stop
             if e.trail_dist is not None and not fills.trail_on_close:
                 extreme = self.h[j] if s == LONG else self.l[j]
                 stop = _tighten(s, stop, extreme - s * e.trail_dist)
-            ex = resolve_bar(s, self.o[j], self.h[j], self.l[j], stop, target, fills, self.fine_bars(j))
+            ex = resolve_bar(
+                s, self.o[j], self.h[j], self.l[j], stop, target, fills, self.fine_bars(j), resting
+            )
             if ex is not None:
                 break
             if e.trail_dist is not None and fills.trail_on_close:

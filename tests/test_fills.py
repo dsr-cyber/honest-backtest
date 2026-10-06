@@ -46,6 +46,7 @@ def test_short_stop_gapped_through_fills_at_open():
 def test_naive_credits_the_stop_price_on_a_gap():
     ex = resolve_bar(LONG, o=95.0, h=96.0, l=94.0, stop=98.0, target=None, fills=NAIVE)
     assert ex.price == 98.0
+    assert ex.gap_through  # flagged even though the naive run doesn't act on it
 
 
 def test_gap_through_in_a_full_run():
@@ -75,6 +76,7 @@ def test_collision_goes_to_target_when_naive():
     ex = resolve_bar(LONG, o=100.0, h=103.0, l=97.0, stop=98.0, target=102.0, fills=NAIVE)
     assert ex.kind == "target"
     assert ex.price == 102.0
+    assert ex.collision
 
 
 def test_open_beyond_target_is_not_a_collision():
@@ -150,6 +152,12 @@ def test_honest_trails_on_close_only():
     assert t.reason == "trail"
     assert t.exit_price == pytest.approx(99.1)
     assert t.exit_time == pd.Timestamp("2026-01-05 09:45")
+
+
+def test_intrabar_trail_above_the_open_is_not_a_gap():
+    ex = resolve_bar(LONG, o=100.0, h=104.0, l=100.3, stop=102.5, target=None, fills=NAIVE, stop_at_open=98.5)
+    assert ex.price == 102.5
+    assert not ex.gap_through
 
 
 def test_trail_never_loosens():
