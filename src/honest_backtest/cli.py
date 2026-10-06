@@ -10,6 +10,7 @@ from .costs import PRESETS, NoCosts
 from .data import SAMPLE_SEED, load_bars, make_sample_bars, write_sample_bars
 from .engine import FillModel, run
 from .metrics import summarize
+from .oos import oos_table, split_by_day
 from .strategy import OpeningRangeBreakout
 
 DEFAULT_DATA = Path("data/sample_bars.csv")
@@ -35,6 +36,10 @@ def _ratio(x: float) -> str:
 
 def _pct(x: float) -> str:
     return "n/a" if math.isnan(x) else f"{x:.1%}"
+
+
+def _span(bars) -> str:
+    return f"{bars['timestamp'].iloc[0]:%Y-%m-%d} to {bars['timestamp'].iloc[-1]:%Y-%m-%d}"
 
 
 def _load(path: Path | None):
@@ -109,6 +114,29 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_oos(args) -> int:
+    bars, source = _load(args.data)
+    strat = _strategy(args)
+    steps = {"range_bars": 1, "stop_frac": 0.1}
+    if strat.target_r is not None:
+        steps["target_r"] = 0.5
+    if strat.trail_frac is not None:
+        steps["trail_frac"] = 0.1
+    table = oos_table(bars, strat, steps, PRESETS[args.costs], args.qty, args.in_sample)
+
+    first, rest = split_by_day(bars, args.in_sample)
+    print(f"{source}: in-sample {_span(first)}, out-of-sample {_span(rest)}")
+    print(f"honest fills, costs {args.costs}, qty {args.qty:g}")
+    print()
+    print(f"{'params':18}{'IS net':>12}{'IS trades':>11}{'OOS net':>12}{'OOS trades':>12}{'OOS PF':>8}")
+    for r in table.itertuples():
+        print(
+            f"{r.params:18}{_money(r.is_net):>12}{r.is_trades:>11}"
+            f"{_money(r.oos_net):>12}{r.oos_trades:>12}{_ratio(r.oos_pf):>8}"
+        )
+    return 0
+
+
 def cmd_lint(args) -> int:
     return lint.main(args.paths)
 
@@ -127,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_strategy_args(p)
     p.add_argument("--fine", type=Path, help="finer bars used to settle stop/target collisions")
     p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("oos", help="in/out-of-sample split and neighbouring parameters")
+    _add_strategy_args(p)
+    p.add_argument("--in-sample", type=float, default=0.6, help="fraction of days used as in-sample")
+    p.set_defaults(func=cmd_oos)
 
     p = sub.add_parser("lint", help="flag optimistic fill patterns in backtest code")
     p.add_argument("paths", nargs="+", help="python files or directories")
