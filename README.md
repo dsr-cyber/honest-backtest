@@ -8,7 +8,7 @@ linter that looks for the places where other backtests don't.
 I found this the expensive way. I had six intraday option-buying strategies
 whose backtests said they made money. Then I changed one thing: stop-losses
 filled at prices that actually traded, instead of at the stop level. Five of
-the six turned into losers. The signals were fine. The fill model was wrong,
+the six turned into losers. The entries never changed. The fill model was wrong,
 and every number after it inherited the mistake.
 
 The mistakes are dull and very common:
