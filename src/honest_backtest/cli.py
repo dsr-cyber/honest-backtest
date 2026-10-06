@@ -5,6 +5,7 @@ import math
 import sys
 from pathlib import Path
 
+from . import lint
 from .costs import PRESETS, NoCosts
 from .data import SAMPLE_SEED, load_bars, make_sample_bars, write_sample_bars
 from .engine import FillModel, run
@@ -108,6 +109,10 @@ def cmd_compare(args) -> int:
     return 0
 
 
+def cmd_lint(args) -> int:
+    return lint.main(args.paths)
+
+
 def cmd_make_data(args) -> int:
     bars = write_sample_bars(args.out, days=args.days, seed=args.seed)
     print(f"wrote {len(bars)} bars to {args.out}")
@@ -122,6 +127,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_strategy_args(p)
     p.add_argument("--fine", type=Path, help="finer bars used to settle stop/target collisions")
     p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("lint", help="flag optimistic fill patterns in backtest code")
+    p.add_argument("paths", nargs="+", help="python files or directories")
+    p.set_defaults(func=cmd_lint)
 
     p = sub.add_parser("make-data", help="regenerate the synthetic sample bars")
     p.add_argument("--out", type=Path, default=DEFAULT_DATA)
